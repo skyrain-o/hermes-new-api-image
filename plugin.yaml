@@ -1,0 +1,8 @@
+name: new-api-image
+version: 1.0.0
+description: "gpt-image-2 via a New API / OneAPI / OpenAI-compatible gateway's codex channel — fork of Hermes's built-in openai-codex plugin"
+author: skyrain
+kind: backend
+requires_env:
+  - NEW_API_KEY
+  - NEW_API_BASE_URL
