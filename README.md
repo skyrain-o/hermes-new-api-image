@@ -132,6 +132,54 @@ except httpx.RemoteProtocolError as exc:
 - `partial_images: 1`（一次返回完整图，没有真正的流式生成视觉反馈）
 - 不支持图生图 / inpainting（Codex 渠道没暴露这些）
 
+---
+
+## Bonus：让 Vision（看图）也走 codex 渠道
+
+装完上面的 plugin、能在 Hermes 里**生**图之后，你可能会撞到 `vision_analyze` / `browser_vision` 工具失败：
+
+```
+codex channel: /v1/chat/completions endpoint not supported
+```
+
+**根因**：Hermes 默认走 `/v1/chat/completions + image_url` 调 vision，但 codex 渠道封了 chat completions 端点（跟图片端点被封是同一类商业策略限制）。
+
+**好消息**：Codex 渠道**接受** `/v1/responses + input_image`——也就是你的订阅本来就能看图，只是路径不一样。
+
+**修复 = 一行命令**：
+
+```bash
+hermes config set auxiliary.vision.api_mode codex_responses
+hermes gateway restart
+```
+
+这会让 Hermes 内置的 `CodexAuxiliaryClient` shim 接管 vision 调用，**自动把 `chat.completions.create()` 翻译成 `/v1/responses + input_image` 请求**，无需写 plugin 或适配器。
+
+效果（直接走 hermes 内部 vision client 测试，128×128 红方块）：
+
+```
+client type: CodexAuxiliaryClient   ← shim 已生效
+model: gpt-5.4
+elapsed: 1.1s
+reply: red                          ← 正确
+```
+
+**为什么这个改动安全（不会破坏主模型）**：
+
+`auxiliary.vision.api_mode` 只作用于 vision 子系统。你的主模型（比如 `deepseek-v4-flash`）仍然走 `custom_providers[new-api].api_mode = chat_completions` 这条全局配置，互不干扰。
+
+### 验证
+
+```python
+from agent.auxiliary_client import resolve_vision_provider_client
+provider, client, model = resolve_vision_provider_client()
+print(type(client).__name__)  # 应该是 CodexAuxiliaryClient（不是 OpenAI）
+```
+
+如果还是 `OpenAI`，检查 `~/.hermes/config.yaml` 里 `auxiliary.vision.api_mode` 是不是真的写进去了，然后 `hermes gateway restart`。
+
+---
+
 ## 相关
 
 - 基于 [NousResearch/hermes-agent](https://github.com/NousResearch/hermes-agent) 的 `openai-codex` plugin fork
